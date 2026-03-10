@@ -1,0 +1,27 @@
+{
+    "name": "wams/wams-notifications",
+    "type": "wordpress-plugin",
+    "authors": [
+        {
+            "name": "Zain Sardar",
+            "email": "aztifywams@gmail.com"
+        }
+    ],
+    "require": {
+        "giggsey/libphonenumber-for-php": "^8.13"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "wp-coding-standards/wpcs": true
+        }
+    },
+    "require-dev": {
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpcompatibility/phpcompatibility-wp": "*",
+        "wp-coding-standards/wpcs": "*",
+        "phpunit/phpunit": "*",
+        "yoast/phpunit-polyfills": "^2.0",
+        "squizlabs/php_codesniffer": "3.*"
+    }
+}
