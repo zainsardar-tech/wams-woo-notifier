@@ -51,3 +51,4 @@ If you encounter any issues, please reach out:
 ---
 
 Developed by [Zain Sardar](https://wa.me/923246270322).
+Testing GitHub Pull Request badge
