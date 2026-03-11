@@ -41,14 +41,3 @@ As with any automated tool, you must follow WhatsApp's guidelines. Avoid sending
 
 ### Where do I get the API Key?
 Log in to [wams.aztify.com](https://wams.aztify.com), click on your profile/settings in the top right, and you will find your **API Key**.
-
-## 📞 Support
-
-If you encounter any issues, please reach out:
-- **Email:** aztifywams@gmail.com
-- **Website:** [wams.aztify.com/contact](https://wams.aztify.com/contact)
-
----
-
-Developed by [Zain Sardar](https://wa.me/923246270322).
-Testing GitHub Pull Request badge
