@@ -34,6 +34,18 @@ class wams_Notifications_Admin
 
     private $wams_db;
 
+    /**
+     * The WooCommerce hook handler.
+     *
+     * Kept as a property (since 1.3.0) so the broadcast cron worker and the
+     * delivery health card can reach it without creating a second instance.
+     *
+     * @since    1.3.0
+     * @access   private
+     * @var      wams_Notifications_Admin_Wc_Hook
+     */
+    private $wc_hook;
+
     public function __construct($wams_notifications, $version, $loader)
     {
 
@@ -240,6 +252,44 @@ class wams_Notifications_Admin
             $sanitized['wams_notifications_field_full_response'] = sanitize_text_field($options['wams_notifications_field_full_response']);
         }
 
+        /*
+         * --- Notification safety fields (1.3.0) ---
+         * Every value is cast and clamped here as well as in the worker, so even a
+         * hand crafted POST cannot push the batch size or the interval into a
+         * range that would spam WhatsApp.
+         */
+        if (isset($options['wams_notifications_field_require_optin'])) {
+            $sanitized['wams_notifications_field_require_optin'] = ($options['wams_notifications_field_require_optin'] === '1') ? '1' : '0';
+        }
+
+        if (isset($options['wams_notifications_field_broadcast_batch_size'])) {
+            $sanitized['wams_notifications_field_broadcast_batch_size'] = (string) min(50, max(1, absint($options['wams_notifications_field_broadcast_batch_size'])));
+        }
+
+        if (isset($options['wams_notifications_field_broadcast_interval'])) {
+            $sanitized['wams_notifications_field_broadcast_interval'] = (string) min(HOUR_IN_SECONDS, max(10, absint($options['wams_notifications_field_broadcast_interval'])));
+        }
+
+        if (isset($options['wams_notifications_field_broadcast_daily_limit'])) {
+            $sanitized['wams_notifications_field_broadcast_daily_limit'] = (string) min(10000, absint($options['wams_notifications_field_broadcast_daily_limit']));
+        }
+
+        if (isset($options['wams_notifications_field_notify_admin'])) {
+            $sanitized['wams_notifications_field_notify_admin'] = ($options['wams_notifications_field_notify_admin'] === '1') ? '1' : '0';
+        }
+
+        if (isset($options['wams_notifications_field_notify_email'])) {
+            $notify_email = sanitize_email($options['wams_notifications_field_notify_email']);
+
+            // A typo here would silently drop every failure alert, so reject it loudly.
+            if ($notify_email !== '' && !is_email($notify_email)) {
+                add_settings_error('wams_notifications_main_messages', 'wams_notifications_invalid_email', __('The failure notification email is not a valid address, so it was not saved.', 'wams-notifications'), 'error');
+                $notify_email = '';
+            }
+
+            $sanitized['wams_notifications_field_notify_email'] = $notify_email;
+        }
+
         add_settings_error('wams_notifications_main_messages', 'wams_notifications_updated', __('Settings Saved', 'wams-notifications'), 'updated');
         return $sanitized;
     }
@@ -313,6 +363,97 @@ class wams_Notifications_Admin
                 'wams_notifications_custom_data' => 'custom',
             )
         );
+
+        /*
+         * --- Notification safety section (1.3.0) -------------------------------
+         * These fields control the two problems reported by store owners:
+         *   1. the product broadcast going out to customers who never agreed to it,
+         *   2. no signal at all when a notification fails to send.
+         */
+        add_settings_section(
+            'wams_notifications_section_safety',
+            __('Notification Safety & Limits', 'wams-notifications'),
+            array($this, 'wams_notifications_section_safety_callback'),
+            $this->get_menu_url('options')
+        );
+
+        add_settings_field(
+            'wams_notifications_field_require_optin',
+            __('Require opt-in', 'wams-notifications'),
+            array($this, 'wams_notifications_field_require_optin_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_require_optin',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
+
+        add_settings_field(
+            'wams_notifications_field_broadcast_batch_size',
+            __('Broadcast batch size', 'wams-notifications'),
+            array($this, 'wams_notifications_field_broadcast_batch_size_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_broadcast_batch_size',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
+
+        add_settings_field(
+            'wams_notifications_field_broadcast_interval',
+            __('Pause between batches', 'wams-notifications'),
+            array($this, 'wams_notifications_field_broadcast_interval_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_broadcast_interval',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
+
+        add_settings_field(
+            'wams_notifications_field_broadcast_daily_limit',
+            __('Daily broadcast limit', 'wams-notifications'),
+            array($this, 'wams_notifications_field_broadcast_daily_limit_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_broadcast_daily_limit',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
+
+        add_settings_field(
+            'wams_notifications_field_notify_admin',
+            __('Email me on failure', 'wams-notifications'),
+            array($this, 'wams_notifications_field_notify_admin_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_notify_admin',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
+
+        add_settings_field(
+            'wams_notifications_field_notify_email',
+            __('Failure notification email', 'wams-notifications'),
+            array($this, 'wams_notifications_field_notify_email_cb'),
+            $this->get_menu_url('options'),
+            'wams_notifications_section_safety',
+            array(
+                'label_for' => 'wams_notifications_field_notify_email',
+                'class' => 'wams_notifications_row',
+                'wams_notifications_custom_data' => 'custom',
+            )
+        );
     }
 
     public function wams_notifications_section_credential_callback($args)
@@ -322,6 +463,48 @@ class wams_Notifications_Admin
             <?php esc_html_e('Please enter the Api Key from your (wams) site. If you do not have one, please register and set up your WhatsApp account as the message sender.', 'wams-notifications'); ?>
         </p>
         <?php
+    }
+
+    /**
+     * Description for the "Notification Safety & Limits" section.
+     *
+     * Shows the two numbers that make the feature observable: how many customers
+     * actually opted in, and how much of the broadcast queue is still pending.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings section arguments.
+     */
+    public function wams_notifications_section_safety_callback($args)
+    {
+        include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-optin.php';
+        include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-wc-hook.php';
+
+        $opted_in = class_exists('wams_Notifications_Admin_Optin') ? wams_Notifications_Admin_Optin::count_opted_in() : 0;
+        $queue = class_exists('wams_Notifications_Admin_Wc_Hook') ? wams_Notifications_Admin_Wc_Hook::get_queue() : array('items' => array());
+        $stats = class_exists('wams_Notifications_Admin_Wc_Hook') ? wams_Notifications_Admin_Wc_Hook::get_stats() : array('sent' => 0, 'failed' => 0);
+        ?>
+        <p id="<?php echo esc_attr($args['id']); ?>">
+            <?php esc_html_e('New Product Published messages are marketing, so they are only sent to customers who opted in, and they are delivered in small throttled batches. Order status notifications stay transactional and are never delayed or filtered.', 'wams-notifications'); ?>
+        </p>
+        <p>
+            <?php
+            printf(
+                /* translators: 1: number of opted-in users, 2: messages sent today, 3: messages pending in the queue. */
+                esc_html__('Opted-in customers: %1$d &middot; Broadcast messages sent today: %2$d &middot; Items still queued: %3$d', 'wams-notifications'),
+                (int) $opted_in,
+                (int) $stats['sent'],
+                (int) count($queue['items'])
+            );
+            ?>
+        </p>
+        <?php
+        if ((int) $opted_in === 0) {
+            ?>
+            <p class="description">
+                <?php esc_html_e('Nobody has opted in yet. Once opt-in is enabled, the broadcast reaches only customers who tick the checkbox on their account page (or that you tick on their user profile).', 'wams-notifications'); ?>
+            </p>
+            <?php
+        }
     }
 
     public function wams_notifications_field_secret_key_cb($args)
@@ -380,6 +563,140 @@ class wams_Notifications_Admin
         <?php
     }
 
+    /**
+     * Opt-in gate switch.
+     *
+     * Enabled by default: the "New Product Published" template is marketing and
+     * must not be sent to customers who never asked for it.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_require_optin_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = (isset($options['wams_notifications_field_require_optin']) && $options['wams_notifications_field_require_optin'] !== '') ? $options['wams_notifications_field_require_optin'] : '1';
+        ?>
+        <select id="wams_notifications_field_require_optin"
+            name="wams_notifications_options[wams_notifications_field_require_optin]" style="width: 50%">
+            <option value="1" <?php selected($value, '1'); ?>>Enabled</option>
+            <option value="0" <?php selected($value, '0'); ?>>Disabled</option>
+        </select>
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            If enabled, the new product broadcast is sent only to users who opted in. Order status
+            notifications are transactional and are always sent, regardless of this setting.
+        </p>
+        <?php
+    }
+
+    /**
+     * How many broadcast messages are sent per cron run.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_broadcast_batch_size_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = (isset($options['wams_notifications_field_broadcast_batch_size']) && $options['wams_notifications_field_broadcast_batch_size'] !== '') ? absint($options['wams_notifications_field_broadcast_batch_size']) : wams_Notifications_Admin_Wc_Hook::DEFAULT_BATCH_SIZE;
+        ?>
+        <input type="number" min="1" max="50" id="wams_notifications_field_broadcast_batch_size"
+            name="wams_notifications_options[wams_notifications_field_broadcast_batch_size]"
+            value="<?php echo esc_attr($value); ?>" style="width: 120px">
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            Number of WhatsApp messages sent per batch (1 - 50). Keep this small: the sender number is
+            the one that gets rate-limited or blocked when it sends too fast.
+        </p>
+        <?php
+    }
+
+    /**
+     * Pause between two batches, in seconds.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_broadcast_interval_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = (isset($options['wams_notifications_field_broadcast_interval']) && $options['wams_notifications_field_broadcast_interval'] !== '') ? absint($options['wams_notifications_field_broadcast_interval']) : wams_Notifications_Admin_Wc_Hook::DEFAULT_INTERVAL;
+        ?>
+        <input type="number" min="10" max="3600" id="wams_notifications_field_broadcast_interval"
+            name="wams_notifications_options[wams_notifications_field_broadcast_interval]"
+            value="<?php echo esc_attr($value); ?>" style="width: 120px"> seconds
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            How long the queue waits before sending the next batch (10 - 3600). Batches are processed by
+            WP-Cron, so the site needs some traffic for the queue to move.
+        </p>
+        <?php
+    }
+
+    /**
+     * Maximum broadcast messages per day (protects the WhatsApp number).
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_broadcast_daily_limit_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = (isset($options['wams_notifications_field_broadcast_daily_limit']) && $options['wams_notifications_field_broadcast_daily_limit'] !== '') ? absint($options['wams_notifications_field_broadcast_daily_limit']) : wams_Notifications_Admin_Wc_Hook::DEFAULT_DAILY_CAP;
+        ?>
+        <input type="number" min="0" max="10000" id="wams_notifications_field_broadcast_daily_limit"
+            name="wams_notifications_options[wams_notifications_field_broadcast_daily_limit]"
+            value="<?php echo esc_attr($value); ?>" style="width: 120px">
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            Once this many broadcast messages have gone out in a day, the queue pauses and continues
+            tomorrow. Set 0 for no limit (not recommended).
+        </p>
+        <?php
+    }
+
+    /**
+     * Failure email switch.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_notify_admin_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = (isset($options['wams_notifications_field_notify_admin']) && $options['wams_notifications_field_notify_admin'] !== '') ? $options['wams_notifications_field_notify_admin'] : '1';
+        ?>
+        <select id="wams_notifications_field_notify_admin"
+            name="wams_notifications_options[wams_notifications_field_notify_admin]" style="width: 50%">
+            <option value="1" <?php selected($value, '1'); ?>>Enabled</option>
+            <option value="0" <?php selected($value, '0'); ?>>Disabled</option>
+        </select>
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            When a WhatsApp message cannot be sent, it is logged below and an email is sent to the
+            address underneath (at most one email every 15 minutes, so a broken API key cannot flood
+            your inbox). A notice also appears in the WordPress admin.
+        </p>
+        <?php
+    }
+
+    /**
+     * Where failure emails are sent. Empty falls back to the site admin email.
+     *
+     * @since    1.3.0
+     * @param    array $args Settings field arguments.
+     */
+    public function wams_notifications_field_notify_email_cb($args)
+    {
+        $options = get_option('wams_notifications_options');
+        $value = !empty($options['wams_notifications_field_notify_email']) ? $options['wams_notifications_field_notify_email'] : '';
+        ?>
+        <input type="email" id="wams_notifications_field_notify_email"
+            name="wams_notifications_options[wams_notifications_field_notify_email]"
+            value="<?php echo esc_attr($value); ?>" style="width: 50%"
+            placeholder="<?php echo esc_attr(get_option('admin_email')); ?>">
+        <p class="description" style="font-size: 12px; padding: 0 0 0 3px;">
+            Leave empty to use the WordPress administration email address.
+        </p>
+        <?php
+    }
+
     public function register_handle_form_template()
     {
         include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-form-template.php';
@@ -397,6 +714,103 @@ class wams_Notifications_Admin
         ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Options saved successfully.', 'wams-notifications') . '</p></div>';
         }
+
+        $this->render_failure_notice();
+    }
+
+    /**
+     * Warn the admin when WhatsApp notifications have failed to send.
+     *
+     * Previously a failed order notification disappeared without a trace: the
+     * customer got nothing and nobody was told. Failures are now collected by
+     * wams_Notifications_Admin_Wc_Hook and surfaced here on every admin screen,
+     * with a link to the full list on the Options page and a dismiss link.
+     *
+     * @since    1.3.0
+     */
+    private function render_failure_notice()
+    {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-wc-hook.php';
+
+        if (!class_exists('wams_Notifications_Admin_Wc_Hook')) {
+            return;
+        }
+
+        $failures = wams_Notifications_Admin_Wc_Hook::get_failure_log();
+
+        if (empty($failures)) {
+            return;
+        }
+
+        $latest = $failures[0];
+        $dismiss_url = wp_nonce_url(
+            add_query_arg('wams_dismiss_failures', '1'),
+            'wams_dismiss_failures'
+        );
+        ?>
+        <div class="notice notice-warning">
+            <p>
+                <strong><?php esc_html_e('WAMS Woo Notifier: WhatsApp messages failed to send.', 'wams-notifications'); ?></strong>
+            </p>
+            <p>
+                <?php
+                printf(
+                    /* translators: 1: number of recent failures, 2: what failed, 3: error message, 4: date and time. */
+                    esc_html__('%1$d failure(s) recorded. Latest: %2$s - %3$s (at %4$s).', 'wams-notifications'),
+                    (int) count($failures),
+                    esc_html($latest['context']),
+                    esc_html($latest['error']),
+                    esc_html($latest['time'])
+                );
+                ?>
+            </p>
+            <p>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=wams-notifications-options')); ?>">
+                    <?php esc_html_e('Review the delivery log', 'wams-notifications'); ?>
+                </a>
+                &nbsp;|&nbsp;
+                <a href="<?php echo esc_url($dismiss_url); ?>"><?php esc_html_e('Dismiss', 'wams-notifications'); ?></a>
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Handle the "Dismiss" link of the failure notice.
+     *
+     * Clears the stored failure log after a nonce and capability check.
+     *
+     * @since    1.3.0
+     */
+    public function handle_dismiss_failure_notice()
+    {
+        if (!isset($_GET['wams_dismiss_failures'])) {
+            return;
+        }
+
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field(wp_unslash($_GET['_wpnonce'])) : '';
+
+        if (!wp_verify_nonce($nonce, 'wams_dismiss_failures')) {
+            return;
+        }
+
+        include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-wc-hook.php';
+
+        if (class_exists('wams_Notifications_Admin_Wc_Hook')) {
+            wams_Notifications_Admin_Wc_Hook::clear_failure_log();
+        }
+
+        // Reload the screen without the query argument so the notice disappears.
+        wp_safe_redirect(remove_query_arg(array('wams_dismiss_failures', '_wpnonce')));
+        exit;
     }
 
     public function register_handle_ajax_status_template()
@@ -413,6 +827,41 @@ class wams_Notifications_Admin
 
         $wc = new wams_Notifications_Admin_Wc_Hook($this->wams_notifications, $this->version, $this->loader, $this->wams_db);
         $wc->register_hooks();
+
+        // Keep the instance: the cron worker below runs on the same object, so the
+        // queue logic, settings and failure log all share one place.
+        $this->wc_hook = $wc;
+    }
+
+    /**
+     * Register the opt-in hooks (consent collection).
+     *
+     * @since    1.3.0
+     */
+    public function register_optin_hooks()
+    {
+        include_once plugin_dir_path(__FILE__) . 'class-wams-notifications-admin-optin.php';
+
+        $optin = new wams_Notifications_Admin_Optin($this->wams_notifications, $this->version);
+        $optin->register_hooks($this->loader);
+    }
+
+    /**
+     * Cron callback: send the next product broadcast batch.
+     *
+     * Hooked to wams_notifications_process_broadcast. WP-Cron fires it once, the
+     * worker sends one batch of opted-in recipients and schedules the next run
+     * itself, so a store with a large list never sends everything at once.
+     *
+     * @since    1.3.0
+     */
+    public function process_broadcast_queue()
+    {
+        if (!$this->wc_hook instanceof wams_Notifications_Admin_Wc_Hook) {
+            return;
+        }
+
+        $this->wc_hook->process_broadcast_queue();
     }
 
 

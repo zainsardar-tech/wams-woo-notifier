@@ -166,7 +166,19 @@ class wams_Notifications
 
 		$this->loader->add_action('admin_notices', $plugin_admin, 'wams_notifications_admin_notices');
 
+		// Handles the "Dismiss" link of the delivery failure notice (added in 1.3.0).
+		$this->loader->add_action('admin_init', $plugin_admin, 'handle_dismiss_failure_notice');
+
+		// Consent collection for the product broadcast (added in 1.3.0).
+		$plugin_admin->register_optin_hooks();
+
+		/*
+		 * WP-Cron worker that delivers the product broadcast in throttled batches
+		 * (added in 1.3.0). Registered after register_wc_hooks() so the constant
+		 * lives in an already loaded class.
+		 */
 		$plugin_admin->register_wc_hooks();
+		$this->loader->add_action(wams_Notifications_Admin_Wc_Hook::CRON_HOOK, $plugin_admin, 'process_broadcast_queue');
 	}
 
 	/**

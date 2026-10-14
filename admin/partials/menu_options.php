@@ -75,6 +75,68 @@ $wc_active = class_exists('WooCommerce') && (is_plugin_active('woocommerce/wooco
     </div>
   </form>
 
+  <?php
+  /*
+   * Delivery health card (added in 1.3.0).
+   *
+   * A failed order notification used to be invisible: the API call returned
+   * false and the customer simply never received anything. The hook class now
+   * keeps a short failure log, and this card shows it together with the state of
+   * the product broadcast queue (opt-in + throttling), so the link in the admin
+   * notice has somewhere to land.
+   */
+  include_once plugin_dir_path(dirname(__FILE__)) . 'class-wams-notifications-admin-wc-hook.php';
+  $wams_failures = class_exists('wams_Notifications_Admin_Wc_Hook') ? wams_Notifications_Admin_Wc_Hook::get_failure_log() : array();
+  $wams_stats = class_exists('wams_Notifications_Admin_Wc_Hook') ? wams_Notifications_Admin_Wc_Hook::get_stats() : array('sent' => 0, 'failed' => 0);
+  $wams_queue = class_exists('wams_Notifications_Admin_Wc_Hook') ? wams_Notifications_Admin_Wc_Hook::get_queue() : array('items' => array());
+  $wams_clear_url = wp_nonce_url(add_query_arg('wams_dismiss_failures', '1'), 'wams_dismiss_failures');
+  ?>
+  <div class="wams-card">
+    <div class="wams-card-header">
+      <div class="wams-card-title">Delivery Health</div>
+      <div class="wams-card-subtitle">
+        <?php
+        printf(
+          /* translators: 1: messages sent today, 2: messages failed today, 3: items waiting in the broadcast queue. */
+          esc_html__('Broadcast today: %1$d sent, %2$d failed - items queued: %3$d', 'wams-notifications'),
+          (int) $wams_stats['sent'],
+          (int) $wams_stats['failed'],
+          (int) count($wams_queue['items'])
+        );
+        ?>
+      </div>
+    </div>
+    <div class="wams-card-content">
+      <?php if (empty($wams_failures)): ?>
+        <p class="muted"><?php esc_html_e('No delivery failure recorded. Order notifications and broadcasts are going out normally.', 'wams-notifications'); ?></p>
+      <?php else: ?>
+        <table class="widefat striped">
+          <thead>
+            <tr>
+              <th><?php esc_html_e('Time', 'wams-notifications'); ?></th>
+              <th><?php esc_html_e('Event', 'wams-notifications'); ?></th>
+              <th><?php esc_html_e('Recipient', 'wams-notifications'); ?></th>
+              <th><?php esc_html_e('Error', 'wams-notifications'); ?></th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($wams_failures as $wams_failure): ?>
+              <tr>
+                <td><?php echo esc_html($wams_failure['time']); ?></td>
+                <td><?php echo esc_html($wams_failure['context']); ?></td>
+                <td><?php echo esc_html($wams_failure['phone'] !== '' ? $wams_failure['phone'] : '-'); ?></td>
+                <td><?php echo esc_html($wams_failure['error']); ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+        <p style="margin: 10px 0 0;">
+          <a class="button" href="<?php echo esc_url($wams_clear_url); ?>"><?php esc_html_e('Clear log', 'wams-notifications'); ?></a>
+        </p>
+      <?php endif; ?>
+    </div>
+  </div>
+
   <div class="wams-card <?php echo $wc_active ? '' : 'wams-card-disabled'; ?>">
     <div class="wams-card-header">
       <div class="wams-card-title">Test Notification</div>

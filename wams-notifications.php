@@ -16,7 +16,7 @@
  * Plugin Name:       WAMS Woo Notifier
  * Plugin URI:        https://wams.aztify.com
  * Description:       Automatically send WhatsApp notifications for WooCommerce purchases, ensuring your customers stay updated with instant order status alerts.
- * Version:           1.0
+ * Version:           1.3.0
  * Author:            Zain Sardar
  * Author URI:        https://wa.me/923246270322
  * License:           GPLv3
@@ -34,7 +34,7 @@ if (is_readable(__DIR__ . '/vendor/autoload.php')) {
 	require __DIR__ . '/vendor/autoload.php';
 }
 
-define('wams_NOTIFICATIONS_VERSION', '1.2.0');
+define('wams_NOTIFICATIONS_VERSION', '1.3.0');
 
 global $wams_notifications_db_version;
 $wams_notifications_db_version = '1.0';

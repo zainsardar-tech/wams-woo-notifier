@@ -31,6 +31,15 @@ class wams_Notifications_Deactivator {
 	 */
 	public static function deactivate() {
 
+		/*
+		 * Drop the pending product broadcast worker (added in 1.3.0).
+		 * The literal hook name is used on purpose: the class that defines the
+		 * CRON_HOOK constant is not loaded during deactivation, and a scheduled
+		 * event that points at a deactivated plugin would just fire into nothing.
+		 * The queued option is intentionally kept, so reactivating the plugin
+		 * resumes the broadcast instead of silently losing it.
+		 */
+		wp_clear_scheduled_hook('wams_notifications_process_broadcast');
 	}
 
 }

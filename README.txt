@@ -4,7 +4,7 @@ link: https://wams.aztify.com
 Tags: notifications, whatsapp, woocommerce
 Requires at least: 5.8
 Tested up to: 6.8
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 Requires PHP: 7.2
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
@@ -21,6 +21,8 @@ This plugin can send notifications to your customers' WhatsApp numbers when ther
 You can also use your personal WhatsApp number as the message sender. First, register a wams account and add your WhatsApp number to send messages. After that, you will receive a secret key that will be used by this plugin. For more details, see [wams Plugin Wordpress Notifications](https://wams.aztify.com).
 
 Don't worry, this plugin and service are free.
+
+Since 1.3.0 the "New Product Published" message is treated as marketing: it is only sent to customers who opted in on their account page (or that you ticked on their user profile), it is delivered in small batches with a pause between them, and it stops for the day once a daily limit is reached. Order status notifications are transactional and are still sent immediately. If a message cannot be sent you now get an admin notice, an email and a delivery log on the Options page.
 
 **[Indonesia 🇮🇩]**
 Plugin ini dapat mengirim notifikasi ke nomor whatsapp pelanggan anda ketika ada perubahan status pada pesanan, misalnya pesanan berubah
@@ -56,6 +58,14 @@ No, we do not officially collaborate with WhatsApp to connect our system with th
 
 Anyone who violates WhatsApp's rules or guidelines will have the potential to be blocked. For example, sending massive messages will be considered spam, sending messages that contain unlawful content (gambling, sex, pornography) and reports from many users will cause your WhatsApp account to be blocked.
 
+= Will the new product message be sent to all of my customers? =
+
+No. It is only sent to customers who opted in, and it goes out in throttled batches. You can disable the opt in requirement in `wams Notif` -> `Options` under `Notification Safety & Limits`, but keep in mind that sending to a customer list that never agreed is a common reason for a WhatsApp number to be limited or blocked.
+
+= How do I know when a notification fails to send? =
+
+You receive an admin notice in WordPress and an email, and the recent failures are listed on `wams Notif` -> `Options` under `Delivery Health` with the error message. Emails are limited to one every 15 minutes.
+
 = Where can I get the API Key? =
 
 Please visit your wams website and click `setting` in the drop-down menu at the top right and you will find your `API Key`.
@@ -73,6 +83,14 @@ If you are still experiencing difficulties or problems, please contact us via em
 3. Enter your API key and the plugin is ready to use
 
 == Changelog ==
+
+= 1.3.0 =
+* Added: opt in for the new product broadcast, with a checkbox on the WooCommerce account page and on the user profile.
+* Added: throttled broadcast delivery with a batch size, a pause between batches and a daily limit.
+* Added: delivery failure detection with a failure log, an admin notice and a throttled failure email.
+* Added: a Delivery Health card on the Options page showing recent failures and the broadcast counters.
+* Changed: the new product broadcast now runs from a queue instead of sending every message during the publish request.
+* Fixed: the plugin header version now matches the internal version constant.
 
 = 1.2.0 =
 * Fixed wordPress security requirements. 
